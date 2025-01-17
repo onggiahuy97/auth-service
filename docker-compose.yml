@@ -1,0 +1,34 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:14
+    container_name: go_auth_db
+    restart: always
+    environment:
+      POSTGRES_USER: huyong
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: auth_service
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: go_auth_app
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+    environment:
+      # Make sure these match what's in your config/env usage
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: huyong
+      DB_PASS: password
+      DB_NAME: auth_service
+      JWT_SECRET: super-secret-key
+      PORT: "8080"
+volumes:
+  db_data:
