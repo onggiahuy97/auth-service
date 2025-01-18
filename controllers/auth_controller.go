@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"auth-server/config"
+	"auth-server/models"
 	"auth-server/services"
 	"net/http"
 
@@ -22,20 +23,50 @@ type LoginRequest struct {
 func Register(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req RegisterRequest
-
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		token, err := services.LoginUser(db, req.Email, req.Password, cfg.JWTSecret)
+		// Validate input
+		if req.Email == "" || req.Password == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "email and password are required"})
+			return
+		}
+
+		// Check if user already exists
+		var existingUser models.User
+		if err := db.Where("email = ?", req.Email).First(&existingUser).Error; err == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "email already registered"})
+			return
+		}
+
+		// Create new user
+		hashedPassword, err := services.HashPassword(req.Password)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process password"})
+			return
+		}
+
+		newUser := models.User{
+			Email:    req.Email,
+			Password: hashedPassword,
+		}
+
+		if err := db.Create(&newUser).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
+			return
+		}
+
+		// Generate JWT token for the new user
+		token, err := services.GenerateToken(newUser.ID, cfg.JWTSecret)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
 			return
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"message": "Signup successful",
+			"message": "Registration successful",
 			"token":   token,
 		})
 	}
